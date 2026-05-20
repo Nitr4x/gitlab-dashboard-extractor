@@ -104,7 +104,8 @@ Each matching project is represented as:
   "default_branch": "main",
   "ssh_url_to_repo": "git@gitlab.com:acme/my-service.git",
   "http_url_to_repo": "https://gitlab.com/acme/my-service.git",
-  "namespace": { "id": 99, "name": "acme", "kind": "group" }
+  "namespace": { "id": 99, "name": "acme", "kind": "group" },
+  "ingested_at": "2026-05-20T09:38:17Z"
 }
 ```
 

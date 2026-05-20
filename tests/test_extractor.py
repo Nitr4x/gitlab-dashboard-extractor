@@ -333,8 +333,22 @@ class TestFetchProjects:
             "ssh_url_to_repo",
             "http_url_to_repo",
             "namespace",
+            "ingested_at",
         }
         assert expected_keys.issubset(results[0].keys())
+
+    def test_ingested_at_is_iso8601_utc(self):
+        from extractor import fetch_projects
+        from datetime import datetime
+
+        project = _make_project(topics=["devops"])
+        gl = self._make_gl([project])
+        results = fetch_projects(gl, "devops", self._make_logger())
+        ingested_at = results[0]["ingested_at"]
+        # Must parse without error and end with 'Z' (UTC marker)
+        parsed = datetime.strptime(ingested_at, "%Y-%m-%dT%H:%M:%SZ")
+        assert parsed is not None
+        assert ingested_at.endswith("Z")
 
     def test_namespace_contains_expected_keys(self):
         from extractor import fetch_projects

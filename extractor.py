@@ -17,7 +17,7 @@ import logging
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 import gitlab
 
@@ -217,6 +217,7 @@ def fetch_projects(
                         "name": project.namespace["name"],
                         "kind": project.namespace["kind"],
                     },
+                    "ingested_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 }
             )
 
