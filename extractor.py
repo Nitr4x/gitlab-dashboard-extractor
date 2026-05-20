@@ -5,9 +5,13 @@ gitlab-dashboard-extractor
 A script that interfaces with the GitLab API to gather all repositories
 that have a specific topic attached to them. The topic is provided as a
 CLI argument and is interpreted as a regular expression.
+
+GitLab connection settings (URL and personal access token) are read from a
+properties file so that credentials are never passed on the command line.
 """
 
 import argparse
+import configparser
 import json
 import logging
 import os
@@ -18,6 +22,67 @@ from datetime import datetime
 import gitlab
 
 TOOL_NAME = "gitlab-dashboard-extractor"
+DEFAULT_CONFIG_PATH = "config.properties"
+
+
+def load_config(config_path: str) -> dict:
+    """Load GitLab connection settings from a ``.properties`` file.
+
+    The file must contain a ``[gitlab]`` section with at least the ``url``
+    and ``token`` keys, e.g.:
+
+    .. code-block:: ini
+
+        [gitlab]
+        url   = https://gitlab.com
+        token = glpat-xxxxxxxxxxxxxxxxxxxx
+
+    Args:
+        config_path: Path to the properties file.
+
+    Returns:
+        A dictionary with ``"url"`` and ``"token"`` string values.
+
+    Raises:
+        SystemExit: If the file does not exist, cannot be parsed, or is
+            missing required keys.
+    """
+    if not os.path.isfile(config_path):
+        print(
+            f"ERROR: Configuration file '{config_path}' not found. "
+            "Copy config.properties.example to config.properties and fill in your values.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    parser = configparser.ConfigParser()
+    try:
+        parser.read(config_path, encoding="utf-8")
+    except configparser.Error as exc:
+        print(f"ERROR: Failed to parse '{config_path}': {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    section = "gitlab"
+    if not parser.has_section(section):
+        print(
+            f"ERROR: '{config_path}' is missing the required [gitlab] section.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    missing = [key for key in ("url", "token") if not parser.has_option(section, key)]
+    if missing:
+        print(
+            f"ERROR: '{config_path}' is missing required key(s) under [gitlab]: "
+            + ", ".join(missing),
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return {
+        "url": parser.get(section, "url").strip(),
+        "token": parser.get(section, "token").strip(),
+    }
 
 
 def setup_logger(tool_name: str) -> logging.Logger:
@@ -70,24 +135,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         prog=TOOL_NAME,
         description=(
             "Extract GitLab repositories whose topics match a given "
-            "regular expression and export the results as a JSON file."
+            "regular expression and export the results as a JSON file. "
+            "GitLab credentials are read from a properties file."
         ),
     )
     parser.add_argument(
-        "--url",
-        "-u",
-        required=True,
-        help="Base URL of the GitLab instance (e.g. https://gitlab.com).",
-    )
-    parser.add_argument(
-        "--token",
-        "-t",
-        required=True,
-        help="GitLab personal access token (requires at least 'read_api' scope).",
+        "--config",
+        "-c",
+        default=DEFAULT_CONFIG_PATH,
+        help=(
+            f"Path to the properties file containing GitLab credentials "
+            f"(default: {DEFAULT_CONFIG_PATH})."
+        ),
     )
     parser.add_argument(
         "--topic",
-        "-T",
+        "-t",
         required=True,
         help="Regular expression pattern matched against each project topic.",
     )
@@ -207,8 +270,12 @@ def main(argv: list[str] | None = None) -> None:
         logger.error("Invalid regex pattern: %s", exc)
         sys.exit(1)
 
+    # Load GitLab credentials from the properties file.
+    logger.info("Loading configuration from '%s'.", args.config)
+    config = load_config(args.config)
+
     # Initialise the GitLab client and authenticate.
-    gl = gitlab.Gitlab(args.url, private_token=args.token)
+    gl = gitlab.Gitlab(config["url"], private_token=config["token"])
     try:
         gl.auth()
         logger.info("Successfully authenticated with GitLab.")
@@ -226,3 +293,4 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
+

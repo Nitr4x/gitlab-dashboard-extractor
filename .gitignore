@@ -2,6 +2,9 @@
 output/
 logs/
 
+# Sensitive configuration — use config.properties.example as a template
+config.properties
+
 # Python
 __pycache__/
 *.py[cod]

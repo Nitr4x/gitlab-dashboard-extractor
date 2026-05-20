@@ -1,5 +1,6 @@
 """Unit tests for extractor.py."""
 
+import configparser
 import json
 import logging
 import os
@@ -34,6 +35,87 @@ def _make_project(**kwargs) -> SimpleNamespace:
     }
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
+
+
+def _write_config(directory, url="https://gitlab.example.com", token="secret-token"):
+    """Write a minimal config.properties file and return its path."""
+    path = os.path.join(directory, "config.properties")
+    content = f"[gitlab]\nurl = {url}\ntoken = {token}\n"
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    return path
+
+
+# ---------------------------------------------------------------------------
+# load_config
+# ---------------------------------------------------------------------------
+
+
+class TestLoadConfig:
+    def test_returns_url_and_token(self, tmp_path):
+        from extractor import load_config
+
+        path = _write_config(str(tmp_path), url="https://gitlab.com", token="glpat-abc")
+        config = load_config(path)
+        assert config["url"] == "https://gitlab.com"
+        assert config["token"] == "glpat-abc"
+
+    def test_strips_whitespace_from_values(self, tmp_path):
+        from extractor import load_config
+
+        path = os.path.join(str(tmp_path), "config.properties")
+        with open(path, "w") as fh:
+            fh.write("[gitlab]\nurl =  https://gitlab.com  \ntoken =  tok  \n")
+        config = load_config(path)
+        assert config["url"] == "https://gitlab.com"
+        assert config["token"] == "tok"
+
+    def test_exits_if_file_not_found(self, tmp_path):
+        from extractor import load_config
+
+        with pytest.raises(SystemExit) as exc_info:
+            load_config(os.path.join(str(tmp_path), "nonexistent.properties"))
+        assert exc_info.value.code == 1
+
+    def test_exits_if_gitlab_section_missing(self, tmp_path):
+        from extractor import load_config
+
+        path = os.path.join(str(tmp_path), "config.properties")
+        with open(path, "w") as fh:
+            fh.write("[other]\nurl = https://gitlab.com\ntoken = tok\n")
+        with pytest.raises(SystemExit) as exc_info:
+            load_config(path)
+        assert exc_info.value.code == 1
+
+    def test_exits_if_url_key_missing(self, tmp_path):
+        from extractor import load_config
+
+        path = os.path.join(str(tmp_path), "config.properties")
+        with open(path, "w") as fh:
+            fh.write("[gitlab]\ntoken = tok\n")
+        with pytest.raises(SystemExit) as exc_info:
+            load_config(path)
+        assert exc_info.value.code == 1
+
+    def test_exits_if_token_key_missing(self, tmp_path):
+        from extractor import load_config
+
+        path = os.path.join(str(tmp_path), "config.properties")
+        with open(path, "w") as fh:
+            fh.write("[gitlab]\nurl = https://gitlab.com\n")
+        with pytest.raises(SystemExit) as exc_info:
+            load_config(path)
+        assert exc_info.value.code == 1
+
+    def test_exits_if_both_keys_missing(self, tmp_path):
+        from extractor import load_config
+
+        path = os.path.join(str(tmp_path), "config.properties")
+        with open(path, "w") as fh:
+            fh.write("[gitlab]\n")
+        with pytest.raises(SystemExit) as exc_info:
+            load_config(path)
+        assert exc_info.value.code == 1
 
 
 # ---------------------------------------------------------------------------
@@ -90,28 +172,53 @@ class TestSetupLogger:
 
 
 class TestParseArgs:
-    def test_required_arguments_are_parsed(self):
+    def test_topic_long_flag_is_parsed(self):
         from extractor import parse_args
 
-        args = parse_args(["--url", "https://gitlab.com", "--token", "secret", "--topic", "python"])
-        assert args.url == "https://gitlab.com"
-        assert args.token == "secret"
+        args = parse_args(["--topic", "python"])
         assert args.topic == "python"
 
-    def test_short_flags_are_accepted(self):
+    def test_topic_short_flag_is_t(self):
         from extractor import parse_args
 
-        args = parse_args(["-u", "https://gitlab.com", "-t", "tok", "-T", "data.*"])
-        assert args.url == "https://gitlab.com"
-        assert args.token == "tok"
+        args = parse_args(["-t", "data.*"])
         assert args.topic == "data.*"
 
-    def test_missing_required_argument_raises_system_exit(self):
+    def test_config_defaults_to_config_properties(self):
+        from extractor import parse_args, DEFAULT_CONFIG_PATH
+
+        args = parse_args(["-t", "python"])
+        assert args.config == DEFAULT_CONFIG_PATH
+
+    def test_config_long_flag_overrides_default(self):
+        from extractor import parse_args
+
+        args = parse_args(["--config", "/tmp/my.properties", "-t", "python"])
+        assert args.config == "/tmp/my.properties"
+
+    def test_config_short_flag_overrides_default(self):
+        from extractor import parse_args
+
+        args = parse_args(["-c", "/tmp/my.properties", "-t", "python"])
+        assert args.config == "/tmp/my.properties"
+
+    def test_missing_topic_raises_system_exit(self):
         from extractor import parse_args
 
         with pytest.raises(SystemExit):
-            parse_args(["--url", "https://gitlab.com", "--token", "tok"])
-            # --topic is missing
+            parse_args([])
+
+    def test_url_flag_no_longer_accepted(self):
+        from extractor import parse_args
+
+        with pytest.raises(SystemExit):
+            parse_args(["--url", "https://gitlab.com", "-t", "python"])
+
+    def test_token_flag_no_longer_accepted(self):
+        from extractor import parse_args
+
+        with pytest.raises(SystemExit):
+            parse_args(["--token", "tok", "-t", "python"])
 
 
 # ---------------------------------------------------------------------------
@@ -301,10 +408,19 @@ class TestMain:
 
     def test_main_exits_on_invalid_regex(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
+        config_path = _write_config(str(tmp_path))
         from extractor import main
 
         with pytest.raises(SystemExit) as exc_info:
-            main(["--url", "https://gitlab.com", "--token", "tok", "--topic", "[invalid"])
+            main(["-t", "[invalid", "-c", config_path])
+        assert exc_info.value.code == 1
+
+    def test_main_exits_on_missing_config_file(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        from extractor import main
+
+        with pytest.raises(SystemExit) as exc_info:
+            main(["-t", "python", "-c", str(tmp_path / "nonexistent.properties")])
         assert exc_info.value.code == 1
 
     def test_main_exits_on_authentication_failure(self, tmp_path, monkeypatch):
@@ -312,23 +428,25 @@ class TestMain:
         import gitlab
         from extractor import main
 
+        config_path = _write_config(str(tmp_path))
         mock_gl = MagicMock()
         mock_gl.auth.side_effect = gitlab.exceptions.GitlabAuthenticationError(
             "401 Unauthorized", 401
         )
         with patch("extractor.gitlab.Gitlab", return_value=mock_gl):
             with pytest.raises(SystemExit) as exc_info:
-                main(["--url", "https://gitlab.com", "--token", "bad", "--topic", "py"])
+                main(["-t", "py", "-c", config_path])
             assert exc_info.value.code == 1
 
     def test_main_creates_output_file(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         from extractor import main
 
+        config_path = _write_config(str(tmp_path))
         project = _make_project(topics=["python"])
         mock_gl = self._mock_gl([project])
         with patch("extractor.gitlab.Gitlab", return_value=mock_gl):
-            main(["--url", "https://gitlab.com", "--token", "tok", "--topic", "python"])
+            main(["-t", "python", "-c", config_path])
 
         output_files = list((tmp_path / "output").glob("result_*.json"))
         assert len(output_files) == 1
@@ -336,3 +454,19 @@ class TestMain:
             data = json.load(fh)
         assert len(data) == 1
         assert data[0]["name"] == "my-project"
+
+    def test_main_uses_credentials_from_config(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        from extractor import main
+
+        config_path = _write_config(
+            str(tmp_path), url="https://my-gitlab.example.com", token="my-secret-token"
+        )
+        mock_gl = self._mock_gl()
+        with patch("extractor.gitlab.Gitlab", return_value=mock_gl) as mock_ctor:
+            main(["-t", "anything", "-c", config_path])
+
+        mock_ctor.assert_called_once_with(
+            "https://my-gitlab.example.com", private_token="my-secret-token"
+        )
+

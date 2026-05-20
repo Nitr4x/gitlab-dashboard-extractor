@@ -12,6 +12,7 @@ and a dated log file.
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Configuration](#configuration)
 - [Usage](#usage)
   - [Arguments](#arguments)
   - [Examples](#examples)
@@ -25,6 +26,9 @@ and a dated log file.
 
 ## Features
 
+- **Credentials from a properties file** — the GitLab URL and personal access
+  token are loaded from `config.properties` so that secrets are never passed
+  on the command line or stored in shell history.
 - **Topic-based filtering** — provide any Python-compatible regular expression;
   every project whose topic list contains at least one match is collected.
 - **Full project metadata** — id, name, namespace, description, URLs,
@@ -64,19 +68,45 @@ pip install -r requirements.txt
 
 ---
 
+## Configuration
+
+GitLab connection settings are stored in a **properties file** (INI format) so
+that credentials are never passed on the command line.
+
+1. Copy the provided example:
+
+   ```bash
+   cp config.properties.example config.properties
+   ```
+
+2. Edit `config.properties` and fill in your values:
+
+   ```ini
+   [gitlab]
+   url   = https://gitlab.com
+   token = glpat-xxxxxxxxxxxxxxxxxxxx
+   ```
+
+   > **Security:** `config.properties` is listed in `.gitignore` and will
+   > never be committed. Do **not** share or commit this file.
+
+The script will exit with a clear error message if the file is missing or if
+either key is absent.
+
+---
+
 ## Usage
 
 ```
-python extractor.py --url <GITLAB_URL> --token <ACCESS_TOKEN> --topic <REGEX>
+python extractor.py -t <REGEX> [-c <CONFIG_FILE>]
 ```
 
 ### Arguments
 
 | Flag | Short | Required | Description |
 |------|-------|----------|-------------|
-| `--url` | `-u` | ✅ | Base URL of the GitLab instance (e.g. `https://gitlab.com`). |
-| `--token` | `-t` | ✅ | GitLab personal access token. Requires at least the `read_api` scope. |
-| `--topic` | `-T` | ✅ | Python regular expression matched against each project topic. |
+| `--topic` | `-t` | ✅ | Python regular expression matched against each project topic. |
+| `--config` | `-c` | ❌ | Path to the properties file (default: `config.properties`). |
 
 > **Tip:** The pattern is tested with `re.search`, so it matches anywhere
 > inside a topic string. Anchor with `^` / `$` for exact matching.
@@ -86,22 +116,25 @@ python extractor.py --url <GITLAB_URL> --token <ACCESS_TOKEN> --topic <REGEX>
 **Find all projects tagged with any Python-related topic:**
 
 ```bash
-python extractor.py \
-  --url https://gitlab.com \
-  --token glpat-xxxxxxxxxxxxxxxxxxxx \
-  --topic "python"
+python extractor.py -t "python"
+```
+
+**Use a non-default properties file:**
+
+```bash
+python extractor.py -t "python" -c /etc/secrets/gitlab.properties
 ```
 
 **Match topics that start with `data`:**
 
 ```bash
-python extractor.py -u https://gitlab.com -t glpat-xxx -T "^data"
+python extractor.py -t "^data"
 ```
 
 **Case-insensitive match for CI/CD-related topics:**
 
 ```bash
-python extractor.py -u https://gitlab.com -t glpat-xxx -T "(?i)ci.?cd"
+python extractor.py -t "(?i)ci.?cd"
 ```
 
 ---
@@ -163,13 +196,15 @@ created automatically.
 
 ```
 gitlab-dashboard-extractor/
-├── extractor.py          # Main script
-├── requirements.txt      # Runtime dependencies
-├── requirements-dev.txt  # Development / test dependencies
+├── extractor.py              # Main script
+├── config.properties.example # Safe credentials template (commit this)
+├── config.properties         # Your credentials (git-ignored, never commit)
+├── requirements.txt          # Runtime dependencies
+├── requirements-dev.txt      # Development / test dependencies
 ├── tests/
-│   └── test_extractor.py # Unit tests
-├── output/               # Created at runtime — JSON result files
-├── logs/                 # Created at runtime — daily log files
+│   └── test_extractor.py     # Unit tests
+├── output/                   # Created at runtime — JSON result files
+├── logs/                     # Created at runtime — daily log files
 └── README.md
 ```
 
