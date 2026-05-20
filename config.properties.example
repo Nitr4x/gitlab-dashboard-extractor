@@ -1,0 +1,7 @@
+# config.properties — GitLab connection settings
+# Copy this file to config.properties and fill in your values.
+# WARNING: config.properties is listed in .gitignore and must never be committed.
+
+[gitlab]
+url   = https://gitlab.com
+token = glpat-xxxxxxxxxxxxxxxxxxxx

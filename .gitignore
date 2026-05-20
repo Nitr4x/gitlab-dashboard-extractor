@@ -1,0 +1,34 @@
+# Runtime artefacts — never commit these
+output/
+logs/
+
+# Sensitive configuration — use config.properties.example as a template
+config.properties
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
