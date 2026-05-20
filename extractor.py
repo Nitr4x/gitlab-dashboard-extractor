@@ -217,7 +217,7 @@ def fetch_projects(
                         "name": project.namespace["name"],
                         "kind": project.namespace["kind"],
                     },
-                    "ingested_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 }
             )
 
